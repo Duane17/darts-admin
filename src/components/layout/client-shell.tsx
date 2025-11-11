@@ -11,6 +11,7 @@ import {
   IconHierarchy3,
   IconUsersGroup,
   IconHome,
+  IconFileTypography
 } from "@tabler/icons-react";
 
 export default function ClientShell({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,6 @@ export default function ClientShell({ children }: { children: React.ReactNode })
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    // if you use cookies server-side, you could also POST /auth/logout here
     router.replace("/auth");
   };
 
@@ -32,6 +32,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
       { label: "Announcements", href: "/announcements", icon: <IconBroadcast className="h-5 w-5" />, match: /^\/announcements/ },
       { label: "Teams", href: "/teams", icon: <IconUsersGroup className="h-5 w-5" />, match: /^\/teams/ },
       { label: "Leaders", href: "/leaders", icon: <IconHierarchy3 className="h-5 w-5" />, match: /^\/leaders/ },
+      { label: "Content", href: "/content", icon: <IconFileTypography className="h-5 w-5" />, match: /^\/content/ },
     ],
     []
   );

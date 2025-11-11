@@ -8,7 +8,9 @@ import type {
   Result,
   Team,
   BackendStanding,
-  League
+  League,
+  HomeContent,
+  AboutContent
 } from "./api-types";
 import { normalizeStandings } from "./api-types";
 
@@ -617,4 +619,39 @@ export async function authLogout() {
   return http.post<{ ok: true }>("/auth/logout", undefined, {
     credentials: "include",
   });
+}
+
+
+// content reads
+export async function getHomeContent(): Promise<HomeContent> {
+  return http.get("/content/home");
+}
+export async function getAboutContent(): Promise<AboutContent> {
+  return http.get("/content/about");
+}
+
+// content writes
+export async function putHomeContent(payload: HomeContent): Promise<HomeContent> {
+  return http.put("/content/home", payload);
+}
+
+export async function putAboutContent(payload: AboutContent): Promise<AboutContent> {
+  return http.put("/content/about", payload);
+}
+
+// uploads
+export async function uploadImage(args: {
+  file: File;
+  category: "home" | "about" | "teams" | "leaders" | "posts" | "announcements" | "misc";
+  name?: string;
+}): Promise<string> {
+  const fd = new FormData();
+  fd.append("image", args.file);
+  fd.append("category", args.category);
+  if (args.name) fd.append("name", args.name);
+
+  const res = await http.post<{ path: string }>("/uploads/image", fd);
+  const p = String(res?.path || "");
+  if (!p.startsWith("/uploads/")) throw new Error("Upload succeeded but returned an invalid path");
+  return p;
 }

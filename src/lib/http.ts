@@ -1,5 +1,5 @@
 // src/lib/http.ts
-type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type HttpErrorShape = {
   status: number;
@@ -171,6 +171,9 @@ export class HttpClient {
   }
   post<T>(path: string, body?: unknown, init?: RequestInit) {
     return this.request<T>("POST", path, body, init);
+  }
+  put<T>(path: string, body?: unknown, init?: RequestInit) {
+    return this.request<T>("PUT", path, body, init);
   }
   patch<T>(path: string, body?: unknown, init?: RequestInit) {
     return this.request<T>("PATCH", path, body, init);
