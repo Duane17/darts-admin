@@ -63,14 +63,6 @@ export default function DashboardPage() {
         action: { label: "View fixtures", href: "/fixtures" },
       },
       {
-        label: "Results recorded",
-        value: String(resultsRecorded),
-        icon: <IconTrophy className="h-5 w-5" />,
-        loading,
-        variant: "glass" as const,
-        action: { label: "View results", href: "/results" },
-      },
-      {
         label: "Announcements posted",
         value: String(announcementsPosted),
         icon: <IconBell className="h-5 w-5" />,
@@ -185,10 +177,6 @@ export default function DashboardPage() {
       <DashboardHeader
         title="Dashboard"
         subtitle="Quick overview of the league"
-        status={{
-          label: error ? "Degraded" : "Online",
-          tone: error ? "warn" : "ok",
-        }}
       />
 
       <StatGrid items={statItems} />

@@ -74,7 +74,6 @@ export class HttpClient {
   }
 
   private async parseOk<T>(res: Response): Promise<T> {
-    // Many APIs return 204 with no body
     if (res.status === 204) {
       return (undefined as unknown) as T;
     }
@@ -82,15 +81,19 @@ export class HttpClient {
     const ct = res.headers.get("content-type") || "";
     const isJson = ct.includes("application/json");
 
-    if (isJson) {
-      // Some servers send an empty body with application/json
-      const text = await res.text();
-      if (!text) return (undefined as unknown) as T;
-      return JSON.parse(text) as T;
+    if (!isJson) {
+      // Read a small preview and throw a proper HttpError
+      const preview = (await res.text()).slice(0, 300);
+      throw new HttpError({
+        status: res.status,
+        message: `Expected JSON but got ${ct || "unknown content-type"}`,
+        details: preview,
+      });
     }
 
-    // Non JSON not expected. Return undefined cast to keep signature.
-    return (undefined as unknown) as T;
+    const text = await res.text();
+    if (!text) return (undefined as unknown) as T;
+    return JSON.parse(text) as T;
   }
 
   private async parseError(res: Response): Promise<never> {
@@ -115,15 +118,9 @@ export class HttpClient {
     throw new HttpError({ status: res.status, message, details });
   }
 
-  async request<T>(
-    method: HttpMethod,
-    path: string,
-    body?: unknown,
-    init?: RequestInit
-  ): Promise<T> {
+  async request<T>(method: HttpMethod, path: string, body?: unknown, init?: RequestInit): Promise<T> {
     const url = path.startsWith("http") ? path : joinUrl(this.baseUrl, path);
-    const isFormData =
-      typeof FormData !== "undefined" && body instanceof FormData;
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
 
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), this.timeoutMs);
@@ -132,12 +129,10 @@ export class HttpClient {
       const res = await fetch(url, {
         method,
         headers: this.buildHeaders(init?.headers, body),
-        body:
-          body != null
-            ? (isFormData ? (body as BodyInit) : JSON.stringify(body))
-            : undefined,
+        body: body != null ? (isFormData ? (body as BodyInit) : JSON.stringify(body)) : undefined,
         signal: ctrl.signal,
         credentials: init?.credentials ?? this.credentials,
+        cache: "no-store",                // add this
         ...init,
       });
 
@@ -146,7 +141,6 @@ export class HttpClient {
       }
       return this.parseOk<T>(res);
     } catch (err: any) {
-      // Normalize AbortError and timeouts as an HttpError with 408
       if (err?.name === "AbortError") {
         throw new HttpError({
           status: 408,
@@ -154,7 +148,6 @@ export class HttpClient {
           details: { url, method, timeoutMs: this.timeoutMs },
         });
       }
-      // Preserve existing HttpError, wrap other errors
       if (err instanceof HttpError) throw err;
       throw new HttpError({
         status: 0,

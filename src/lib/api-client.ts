@@ -90,20 +90,28 @@ async function fetchAllPages<T>(
 }
 
 /** Announcements: single page and fetch all */
+// Announcements
 export async function listAnnouncementsPage(
   params: PageParams = {}
 ): Promise<Paginated<Announcement>> {
-  // Some servers use pageSize, others use limit. Support both.
-  const qs = toQS({ page: params.page ?? 1, pageSize: params.pageSize ?? 20, limit: params.pageSize ?? 20 });
+  const qs = toQS({
+    page: params.page ?? 1,
+    pageSize: params.pageSize ?? 20,
+    limit: params.pageSize ?? 20,
+  });
+
   const res = await http.get(`/announcements${qs}`);
   const any = res as any;
-  const items = asArray<Announcement>(res);
-  const page = Number(any?.page ?? 1);
-  const pageSize = Number((any?.pageSize ?? any?.limit ?? items.length) || 20);
-  const total = Number(any?.total ?? items.length);
-  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize)));
+
+  const items = asArray<Announcement>(any);
+  const page = Number(any?.page ?? 1) || 1;
+  const pageSize = Number((any?.pageSize ?? any?.limit ?? items.length) || 20) || 20;
+  const total = Number((any?.total ?? items.length) || 0) || items.length;
+  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize))) || 1;
+
   return { items, page, pageSize, total, pages };
 }
+
 
 export async function listAnnouncementsAll(): Promise<Announcement[]> {
   return fetchAllPages<Announcement>((p) => listAnnouncementsPage({ page: p, pageSize: 100 }));
@@ -152,6 +160,7 @@ export type ListFixturesParams = PageParams & {
   includeResults?: boolean; // <- new
 };
 
+// Fixtures
 export async function listFixturesPage(
   params: ListFixturesParams = {}
 ): Promise<Paginated<Fixture>> {
@@ -166,18 +175,21 @@ export async function listFixturesPage(
     week: params.week,
     weekFrom: params.weekFrom,
     weekTo: params.weekTo,
-    includeResults: params.includeResults ?? true, // <- default on
+    includeResults: params.includeResults ?? true,
   });
 
   const res = await http.get(`/fixtures${qs}`);
   const any = res as any;
-  const items = asArray<Fixture>(res);
-  const page = Number(any?.page ?? 1);
-  const pageSize = Number((any?.pageSize ?? items.length) || 20);
-  const total = Number(any?.total ?? items.length);
-  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize)));
+
+  const items = asArray<Fixture>(any);
+  const page = Number(any?.page ?? 1) || 1;
+  const pageSize = Number((any?.pageSize ?? items.length) || 20) || 20;
+  const total = Number(any?.total ?? items.length) || 0 || items.length;
+  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize))) || 1;
+
   return { items, page, pageSize, total, pages };
 }
+
 
 export async function listFixturesAll(params: Omit<ListFixturesParams, "page" | "pageSize"> = {}): Promise<Fixture[]> {
   async function fetchPage(page: number) {
@@ -251,6 +263,7 @@ export async function deleteFixture(id: string): Promise<{ ok: true }> {
 
 /** Leaders */
 
+// Leaders
 export async function listLeadersPage(
   params: ListLeadersParams = {}
 ): Promise<{ items: Leader[]; limit: number; offset: number; total: number; hasMore: boolean }> {
@@ -261,15 +274,19 @@ export async function listLeadersPage(
     offset: params.offset ?? 0,
     sort: params.sort ?? "name_asc",
   });
+
   const res = await http.get(`/leaders${qs}`);
   const any = res as any;
-  const items = asArray<Leader>(res);
-  const limit = Number(any?.limit ?? items.length ?? 20);
-  const offset = Number(any?.offset ?? 0);
-  const total = Number(any?.total ?? items.length ?? 0);
+
+  const items = asArray<Leader>(any);
+  const limit = Number(any?.limit ?? items.length ?? 20) || 20;
+  const offset = Number(any?.offset ?? 0) || 0;
+  const total = Number(any?.total ?? items.length ?? 0) || items.length;
   const hasMore = Boolean(any?.hasMore ?? offset + items.length < total);
+
   return { items, limit, offset, total, hasMore };
 }
+
 
 export async function listLeaders(params: Omit<ListLeadersParams, "limit" | "offset"> = {}): Promise<Leader[]> {
   const page1 = await listLeadersPage({ ...params, limit: 100, offset: 0 });
@@ -323,56 +340,46 @@ export const SEASON =
     : ""; // empty means "no filter"
 
 export async function getStandings(season: string = SEASON): Promise<StandingRow[]> {
-  const qs = `?season=${encodeURIComponent(season)}`;
+  const qs = season && season.trim().length > 0
+    ? `?season=${encodeURIComponent(season)}`
+    : "";
+
   const res = await http.get(`/standings${qs}`);
   const items = asArray<any>(res);
 
   if (items.length === 0) return [];
 
   const looksLikeStandingRow = typeof items[0]?.teamName === "string";
-
-  // If it looks like StandingRow but key fields are missing, re-normalize anyway
   if (looksLikeStandingRow) {
-    const hasAllKeys =
-      items[0].teamId &&
-      typeof items[0].points === "number" &&
-      ("teamLogoUrl" in items[0]);
-
-    if (hasAllKeys) {
-      return items as StandingRow[];
-    }
-    // Normalize to fill gaps such as teamLogoUrl
-    const backAsStanding = items.map((r: any) => {
-      const s: BackendStanding = {
-        id: r.id ?? r.teamId, // safe fallback
-        teamId: r.teamId,
-        played: r.played,
-        won: r.won,
-        drawn: r.drawn,
-        lost: r.lost,
-        goalsFor: r.goalsFor,
-        goalsAgainst: r.goalsAgainst,
-        goalDiff: r.goalDiff,
-        points: r.points,
-        last5: r.last5 ?? null,
-        group: r.group ?? null,
-        season: r.season,
-        seasonYear: r.seasonYear ?? null,
-        league: r.league ?? null,
-        seasonId: r.seasonId ?? null,
-        team: r.team ?? {
-          id: r.teamId,
-          name: r.teamName,
-          slug: r.teamSlug ?? "",
-          logoUrl: r.teamLogoUrl ?? null,
-        },
-      };
-      return s;
-    });
+    const hasAllKeys = items[0].teamId && typeof items[0].points === "number" && ("teamLogoUrl" in items[0]);
+    if (hasAllKeys) return items as StandingRow[];
+    const backAsStanding = items.map((r: any): BackendStanding => ({
+      id: r.id ?? r.teamId,
+      teamId: r.teamId,
+      played: r.played,
+      won: r.won,
+      drawn: r.drawn,
+      lost: r.lost,
+      goalsFor: r.goalsFor,
+      goalsAgainst: r.goalsAgainst,
+      goalDiff: r.goalDiff,
+      points: r.points,
+      last5: r.last5 ?? null,
+      group: r.group ?? null,
+      season: r.season,
+      seasonYear: r.seasonYear ?? null,
+      league: r.league ?? null,
+      seasonId: r.seasonId ?? null,
+      team: r.team ?? {
+        id: r.teamId,
+        name: r.teamName,
+        slug: r.teamSlug ?? "",
+        logoUrl: r.teamLogoUrl ?? null,
+      },
+    }));
     return normalizeStandings(backAsStanding);
   }
 
-  // Otherwise we assume BackendStanding[] and normalize
   return normalizeStandings(items as BackendStanding[]);
 }
 
@@ -392,6 +399,7 @@ export async function getStandingsBy(params: { seasonYear: number; league?: Leag
     return await tryOnce(q1.toString());
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 0;
+    // fall through on common validation errors
     if (status !== 400 && status !== 404 && status !== 422) throw err;
   }
 
@@ -433,6 +441,7 @@ export type ListResultsParams = PageParams & {
   sort?: ResultSort;
 };
 
+
 export async function listResultsPage(
   params: ListResultsParams = {}
 ): Promise<Paginated<Result>> {
@@ -449,13 +458,17 @@ export async function listResultsPage(
 
   const res = await http.get(`/results${qs}`);
   const any = res as any;
-  const items = asArray<Result>(res);
-  const page = Number(any?.page ?? 1);
-  const pageSize = Number((any?.pageSize ?? items.length) || 20);
-  const total = Number(any?.total ?? items.length);
-  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize)));
+
+  const items = asArray<Result>(any);
+  const page = Number(any?.page ?? 1) || 1;
+  const pageSize = Number(any?.pageSize ?? items.length ?? 20) || 20;
+  const total = Number(any?.total ?? items.length ?? 0) || items.length;
+  const pages =
+    Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize))) || 1;
+
   return { items, page, pageSize, total, pages };
 }
+
 
 export async function listResultsAll(
   params: Omit<ListResultsParams, "page" | "pageSize"> = {}
@@ -507,6 +520,7 @@ export type ListTeamsParams = PageParams & {
 };
 
 
+
 export async function listTeamsPage(
   params: ListTeamsParams = {}
 ): Promise<Paginated<Team>> {
@@ -521,13 +535,17 @@ export async function listTeamsPage(
 
   const res = await http.get(`/teams${qs}`);
   const any = res as any;
-  const items = asArray<Team>(res);
-  const page = Number(any?.page ?? 1);
-  const pageSize = Number((any?.pageSize ?? items.length) || 20);
-  const total = Number(any?.total ?? items.length);
-  const pages = Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize)));
+
+  const items = asArray<Team>(any);
+  const page = Number(any?.page ?? 1) || 1;
+  const pageSize = Number(any?.pageSize ?? items.length ?? 20) || 20;
+  const total = Number(any?.total ?? items.length ?? 0) || items.length;
+  const pages =
+    Number(any?.pages ?? Math.max(1, Math.ceil(total / pageSize))) || 1;
+
   return { items, page, pageSize, total, pages };
 }
+
 
 
 export async function listTeamsAll(

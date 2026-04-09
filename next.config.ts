@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  eslint: { ignoreDuringBuilds: true },
+  output: "export",
+  trailingSlash: true,
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "http",
@@ -15,12 +19,11 @@ const nextConfig: NextConfig = {
         port: "4000",
         pathname: "/images/**",
       },
-      // you can add production domains here later, e.g.:
-      // {
-      //   protocol: "https",
-      //   hostname: "api.dartsmw.org",
-      //   pathname: "/uploads/**",
-      // },
+      {
+        protocol: "https",
+        hostname: "api.dartsmw.org",
+        pathname: "/uploads/**",
+      },
     ],
   },
 };
