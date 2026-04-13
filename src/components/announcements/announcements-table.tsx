@@ -28,12 +28,23 @@ export type AnnouncementsTableProps = {
   className?: string;
 };
 
-// Helper to strip HTML tags for the table preview
-function getPlainText(html: string) {
-  return html
-    .replace(/<[^>]*>/g, " ") // Replace tags with spaces
-    .replace(/\s+/g, " ")     // Collapse multiple spaces/newlines
-    .trim();
+function getPlainText(content: string) {
+  if (!content) return "";
+
+  // Simple check: if it contains < and >, treat as HTML
+  const hasHtml = /<[a-z][\s\S]*>/i.test(content);
+
+  if (hasHtml) {
+    return content
+      .replace(/<[^>]*>/g, " ") // Replace tags with spaces
+      .replace(/&nbsp;/g, " ")   // Handle common HTML entities
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")      // Collapse multiple spaces/newlines
+      .trim();
+  }
+
+  // If it's old Markdown or Plain text, just clean up whitespace
+  return content.replace(/\s+/g, " ").trim();
 }
 
 function priorityBadge(p?: Announcement["priority"]) {
@@ -105,7 +116,7 @@ export default function AnnouncementsTable({
                           className="text-[var(--color-ink)] hover:underline font-medium"
                           title="Edit announcement"
                         >
-                          {a.title}
+                          {a.title || "Untitled Announcement"}
                         </Link>
                         {a.body ? (
                           <div className="mt-1 line-clamp-1 text-xs text-[var(--color-ink-muted)]">

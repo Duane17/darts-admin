@@ -35,11 +35,11 @@ export default function AnnouncementsPage() {
     const items = annsQ.data?.items ?? [];
     const term = q.trim().toLowerCase();
     if (!term) return items;
-    return items.filter(
-      (a) =>
-        a.title.toLowerCase().includes(term) ||
-        (a.body ?? "").toLowerCase().includes(term)
-    );
+    return items.filter((a) => {
+      const titleMatch = (a.title ?? "").toLowerCase().includes(term);
+      const bodyMatch = (a.body ?? "").toLowerCase().includes(term);
+      return titleMatch || bodyMatch;
+    });
   }, [annsQ.data?.items, q]);
 
   const onCreated = () => {
