@@ -28,6 +28,14 @@ export type AnnouncementsTableProps = {
   className?: string;
 };
 
+// Helper to strip HTML tags for the table preview
+function getPlainText(html: string) {
+  return html
+    .replace(/<[^>]*>/g, " ") // Replace tags with spaces
+    .replace(/\s+/g, " ")     // Collapse multiple spaces/newlines
+    .trim();
+}
+
 function priorityBadge(p?: Announcement["priority"]) {
   const clsBase = "border-transparent";
   if (p === "success")
@@ -69,7 +77,7 @@ export default function AnnouncementsTable({
               {loading ? (
                 Array.from({ length: pageSize }).map((_, i) => (
                   <TableRow key={i} className="opacity-60">
-                    {Array.from({ length: 4 }).map((__, j) => (
+                    {Array.from({ length: 3 }).map((__, j) => (
                       <TableCell key={j} className="py-4">
                         <div className="h-4 w-28 rounded bg-gray-200" />
                       </TableCell>
@@ -78,7 +86,7 @@ export default function AnnouncementsTable({
                 ))
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-[var(--color-ink-muted)]">
+                  <TableCell colSpan={3} className="py-10 text-center text-[var(--color-ink-muted)]">
                     No announcements yet
                   </TableCell>
                 </TableRow>
@@ -87,20 +95,21 @@ export default function AnnouncementsTable({
                   const when = a.createdAt
                     ? format(new Date(a.createdAt), "dd MMM yyyy, HH:mm")
                     : "-";
-                  const href = `/announcements/detail?id=${encodeURIComponent(a.id)}`;
+                  const href = `/announcements/detail/?id=${encodeURIComponent(a.id)}`;
+                  
                   return (
                     <TableRow key={a.id}>
                       <TableCell className="py-3">
                         <Link
                           href={href}
                           className="text-[var(--color-ink)] hover:underline font-medium"
-                          title="Open announcement"
+                          title="Edit announcement"
                         >
                           {a.title}
                         </Link>
                         {a.body ? (
                           <div className="mt-1 line-clamp-1 text-xs text-[var(--color-ink-muted)]">
-                            {a.body.replace(/\s+/g, " ")}
+                            {getPlainText(a.body)}
                           </div>
                         ) : null}
                       </TableCell>
@@ -124,8 +133,12 @@ export default function AnnouncementsTable({
                               className="text-red-600 focus:text-red-600"
                               onClick={async () => {
                                 if (!confirm(`Delete announcement "${a.title}"?`)) return;
-                                await deleteAnnouncement(a.id);
-                                onChanged?.();
+                                try {
+                                  await deleteAnnouncement(a.id);
+                                  onChanged?.();
+                                } catch (e) {
+                                  console.error(e);
+                                }
                               }}
                             >
                               <IconTrash className="mr-2 h-4 w-4" /> Delete
@@ -156,7 +169,9 @@ export default function AnnouncementsTable({
           </select>
         </div>
 
-        <div className="text-[var(--color-ink-muted)]">Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</div>
+        <div className="text-[var(--color-ink-muted)]">
+          Page {page} of {pages}
+        </div>
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}>

@@ -14,9 +14,9 @@ import { Label } from "@/components/ui/label";
 import { createAnnouncement } from "@/lib/api-client";
 import { type Announcement } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
-import MDEditor from "@uiw/react-md-editor";
-import "@uiw/react-md-editor/markdown-editor.css";
-import "@uiw/react-markdown-preview/markdown.css";
+
+// Ensure this matches the export in your rich-text-editor.tsx file
+import { RichTextEditor, type RichTextEditorRef } from "@/components/common/rich-text-editor";
 
 type Props = {
   open: boolean;
@@ -36,6 +36,9 @@ export default function CreateAnnouncementDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Reference to the editor to trigger the final image uploads
+  const editorRef = React.useRef<RichTextEditorRef>(null);
+
   React.useEffect(() => {
     if (!open) {
       setTitle("");
@@ -46,14 +49,23 @@ export default function CreateAnnouncementDialog({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
+
     setSubmitting(true);
     setError(null);
+
     try {
+      // 1. Get the final HTML (this triggers any pending image uploads)
+      const finalBodyHtml = editorRef.current 
+        ? await editorRef.current.getFinalHtml() 
+        : body;
+
+      // 2. Submit the cleaned HTML to the server
       const created = await createAnnouncement({
         title: title.trim(),
-        body: (body || "").trim(),
-        // no priority sent—server default will apply
+        body: finalBodyHtml.trim(),
       });
+
       onCreated?.(created);
       onOpenChange(false);
     } catch (err: any) {
@@ -71,26 +83,24 @@ export default function CreateAnnouncementDialog({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4">
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              placeholder="Enter announcement title"
+              disabled={submitting}
             />
           </div>
 
-          <div data-color-mode="light">
-            <Label className="mb-2 block">Body</Label>
-            <MDEditor
-              value={body}
-              onChange={(v) => setBody(v || "")}
-              height={380}
-              previewOptions={{
-                // Keep things tidy inside dialogs
-                style: { background: "transparent" },
-              }}
+          <div className="space-y-2">
+            <Label className="block">Body Content</Label>
+            <RichTextEditor 
+              ref={editorRef}
+              value={body} 
+              onChange={setBody} 
             />
           </div>
 
@@ -100,7 +110,7 @@ export default function CreateAnnouncementDialog({
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="pt-4">
             <Button
               type="button"
               variant="outline"
@@ -114,7 +124,7 @@ export default function CreateAnnouncementDialog({
               className="bg-[var(--color-green)] hover:bg-[var(--color-green)]/90"
               disabled={submitting}
             >
-              {submitting ? "Posting..." : "Post"}
+              {submitting ? "Posting..." : "Post Announcement"}
             </Button>
           </DialogFooter>
         </form>
