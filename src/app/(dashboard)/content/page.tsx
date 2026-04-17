@@ -5,6 +5,7 @@ import {
   IconInfoCircle,
   IconFileAnalytics,
   IconArrowRight,
+  IconSpeakerphone,
 } from "@tabler/icons-react";
 
 type ContentCardProps = {
@@ -96,6 +97,16 @@ export default function ContentIndexPage() {
             "Core values grid with images",
           ]}
           Icon={IconFileAnalytics}
+        />
+
+        <ContentCard
+          href="/content/announcements"
+          title="Announcements"
+          blurb="Announcements page styling."
+          points={[
+            "Hero background image",
+          ]}
+          Icon={IconSpeakerphone}
         />
       </div>
     </section>

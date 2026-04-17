@@ -10,7 +10,8 @@ import type {
   BackendStanding,
   League,
   HomeContent,
-  AboutContent
+  AboutContent,
+  AnnouncementsContent
 } from "./api-types";
 import { normalizeStandings } from "./api-types";
 
@@ -648,6 +649,11 @@ export async function getAboutContent(): Promise<AboutContent> {
   return http.get("/content/about");
 }
 
+export async function getAnnouncementsContent(): Promise<AnnouncementsContent> {
+  return http.get("/content/announcements");
+}
+
+
 // content writes
 export async function putHomeContent(payload: HomeContent): Promise<HomeContent> {
   return http.put("/content/home", payload);
@@ -655,6 +661,16 @@ export async function putHomeContent(payload: HomeContent): Promise<HomeContent>
 
 export async function putAboutContent(payload: AboutContent): Promise<AboutContent> {
   return http.put("/content/about", payload);
+}
+
+export async function putAnnouncementsContent(
+  payload: AnnouncementsContent
+): Promise<AnnouncementsContent> {
+  return http.put("/content/announcements", payload);
+}
+
+export async function deleteAnnouncementsContent(): Promise<{ ok: true }> {
+  return http.delete("/content/announcements");
 }
 
 // uploads
