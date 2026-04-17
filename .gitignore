@@ -18,6 +18,7 @@
 /out/
 /out2/
 /out-old/
+/out*
 
 # production
 /build
