@@ -14,8 +14,6 @@ import { Label } from "@/components/ui/label";
 import { createAnnouncement } from "@/lib/api-client";
 import { type Announcement } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
-
-// Ensure this matches the export in your rich-text-editor.tsx file
 import { RichTextEditor, type RichTextEditorRef } from "@/components/common/rich-text-editor";
 
 type Props = {
@@ -36,7 +34,6 @@ export default function CreateAnnouncementDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Reference to the editor to trigger the final image uploads
   const editorRef = React.useRef<RichTextEditorRef>(null);
 
   React.useEffect(() => {
@@ -55,12 +52,10 @@ export default function CreateAnnouncementDialog({
     setError(null);
 
     try {
-      // 1. Get the final HTML (this triggers any pending image uploads)
       const finalBodyHtml = editorRef.current 
         ? await editorRef.current.getFinalHtml() 
         : body;
 
-      // 2. Submit the cleaned HTML to the server
       const created = await createAnnouncement({
         title: title.trim(),
         body: finalBodyHtml.trim(),
@@ -77,40 +72,49 @@ export default function CreateAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !submitting && onOpenChange(v)}>
-      <DialogContent className={cn("sm:max-w-[760px]", className)}>
-        <DialogHeader>
+      <DialogContent 
+        className={cn(
+          "sm:max-w-[760px] w-[95vw] max-h-[90vh] flex flex-col p-0 overflow-hidden", 
+          className
+        )}
+      >
+        <DialogHeader className="p-6 pb-2">
           <DialogTitle>New announcement</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              placeholder="Enter announcement title"
-              disabled={submitting}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="block">Body Content</Label>
-            <RichTextEditor 
-              ref={editorRef}
-              value={body} 
-              onChange={setBody} 
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
+        <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-hidden">
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto px-6 py-2 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                placeholder="Enter announcement title"
+                disabled={submitting}
+              />
             </div>
-          )}
 
-          <DialogFooter className="pt-4">
+            <div className="space-y-2">
+              <Label className="block">Body Content</Label>
+              <RichTextEditor 
+                ref={editorRef}
+                value={body} 
+                onChange={setBody} 
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* Sticky Footer */}
+          <DialogFooter className="p-6 pt-4 border-t bg-muted/20">
             <Button
               type="button"
               variant="outline"
