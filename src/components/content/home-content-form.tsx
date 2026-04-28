@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,22 +14,23 @@ import {
   IconAlertCircle,
   IconArrowUp,
   IconArrowDown,
+  IconPhotoPlus,
 } from "@tabler/icons-react";
 import { mediaUrl } from "@/lib/media";
 import { uploadImage, getHomeContent, putHomeContent } from "@/lib/api-client";
 import type { HomeContent, ProgrammeItem } from "@/lib/api-types";
 
-/** simple uid kept for potential future local ops */
+const HERO_MAX = 4;
+
 function uid() {
   return Math.random().toString(36).slice(2);
 }
 
-/** item completeness without CTA requirement */
 function isItemComplete(p: ProgrammeItem) {
   return !!(p.id && p.title && p.description && p.bgImage);
 }
 
-/** Image field with fixed aspect ratio to avoid stretching on large screens */
+/** Reusable image upload field with 16/9 preview */
 function ImageField(props: {
   label: string;
   value: string;
@@ -55,16 +56,11 @@ function ImageField(props: {
   return (
     <div className="space-y-2">
       <Label>{props.label}</Label>
-
       <div className="grid gap-3 md:grid-cols-[1fr,auto]">
         <div className="space-y-2">
           {props.value ? (
             <div className="rounded-md border bg-white p-2">
-              {/* aspect ratio container prevents tall stretching */}
-              <div
-                className="w-full rounded overflow-hidden"
-                style={{ aspectRatio: "16/9" }}
-              >
+              <div className="w-full rounded overflow-hidden" style={{ aspectRatio: "16/9" }}>
                 <img
                   src={mediaUrl(props.value)}
                   alt={`${props.label} preview`}
@@ -77,12 +73,10 @@ function ImageField(props: {
               No image selected
             </div>
           )}
-
           {!!props.helper && (
             <p className="text-xs text-[var(--color-ink-muted)]">{props.helper}</p>
           )}
         </div>
-
         <div className="flex md:flex-col gap-2">
           <label className="btn btn-outline-gold cursor-pointer inline-flex items-center gap-2">
             <IconUpload className="h-4 w-4" />
@@ -104,14 +98,79 @@ function ImageField(props: {
   );
 }
 
+/** A single numbered hero slideshow slot with reorder and remove controls */
+function HeroSlide(props: {
+  index: number;
+  total: number;
+  value: string;
+  onChange: (v: string) => void;
+  onRemove: () => void;
+  onMove: (dir: "up" | "down") => void;
+}) {
+  const { index, total, value, onChange, onRemove, onMove } = props;
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3 bg-white/60">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="badge badge-gold">Slide {index + 1}</span>
+          {index === 0 && (
+            <span className="text-xs text-[var(--color-ink-muted)]">(shown first)</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => onMove("up")}
+            disabled={index === 0}
+            title="Move up"
+          >
+            <IconArrowUp className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => onMove("down")}
+            disabled={index === total - 1}
+            title="Move down"
+          >
+            <IconArrowDown className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            className="btn btn-ghost text-red-500 hover:text-red-700"
+            onClick={onRemove}
+            title="Remove slide"
+          >
+            <IconTrash className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <ImageField
+        label="Slide image"
+        value={value}
+        onChange={onChange}
+        uploadName={`hero-slide-${index + 1}`}
+        category="home"
+        helper={
+          index === 0
+            ? "First slide — displayed immediately on page load. Use a high-contrast image."
+            : "Use a wide 16:9 image with strong contrast for overlay text."
+        }
+      />
+    </div>
+  );
+}
+
 export default function HomeContentForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [heroBg, setHeroBg] = useState("");
+  const [heroBgs, setHeroBgs] = useState<string[]>([]);
   const [ctaBg, setCtaBg] = useState("");
-  /** keep underlying type, UI says Profile sections */
   const [programmes, setProgrammes] = useState<ProgrammeItem[]>([]);
 
   useEffect(() => {
@@ -122,7 +181,15 @@ export default function HomeContentForm() {
       try {
         const data = await getHomeContent();
         if (mounted && data) {
-          setHeroBg(data.heroBg || "");
+          // Backwards compat: server may return legacy { heroBg } or canonical { heroBgs }
+          const raw = data as any;
+          const images: string[] =
+            Array.isArray(raw.heroBgs) && raw.heroBgs.length > 0
+              ? raw.heroBgs
+              : raw.heroBg
+              ? [raw.heroBg]
+              : [];
+          setHeroBgs(images);
           setCtaBg(data.ctaBg || "");
           setProgrammes((data.programmes || []).map((p) => ({ ...p })));
         }
@@ -132,27 +199,44 @@ export default function HomeContentForm() {
         if (mounted) setLoading(false);
       }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
-  /** Save requires hero, cta, and each section to have title, description, image */
   const canSave = useMemo(() => {
-    if (!heroBg || !ctaBg) return false;
-    for (const p of programmes) {
-      if (!isItemComplete(p)) return false;
-    }
-    return true;
-  }, [heroBg, ctaBg, programmes]);
+    if (heroBgs.length === 0 || heroBgs.some((v) => !v)) return false;
+    if (!ctaBg) return false;
+    return programmes.every(isItemComplete);
+  }, [heroBgs, ctaBg, programmes]);
 
-  const removeProgramme = (id: string) => {
+  // Hero slide mutations
+  const addHeroSlide = useCallback(() => {
+    setHeroBgs((prev) => (prev.length < HERO_MAX ? [...prev, ""] : prev));
+  }, []);
+
+  const removeHeroSlide = useCallback((idx: number) => {
+    setHeroBgs((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const updateHeroSlide = useCallback((idx: number, value: string) => {
+    setHeroBgs((prev) => prev.map((v, i) => (i === idx ? value : v)));
+  }, []);
+
+  const moveHeroSlide = useCallback((idx: number, dir: "up" | "down") => {
+    setHeroBgs((prev) => {
+      const next = prev.slice();
+      const swap = dir === "up" ? idx - 1 : idx + 1;
+      if (swap < 0 || swap >= next.length) return prev;
+      [next[idx], next[swap]] = [next[swap], next[idx]];
+      return next;
+    });
+  }, []);
+
+  // Programme mutations
+  const removeProgramme = (id: string) =>
     setProgrammes((prev) => prev.filter((p) => p.id !== id));
-  };
 
-  const updateProgramme = (id: string, patch: Partial<ProgrammeItem>) => {
+  const updateProgramme = (id: string, patch: Partial<ProgrammeItem>) =>
     setProgrammes((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  };
 
   const moveProgramme = (id: string, dir: "up" | "down") => {
     setProgrammes((prev) => {
@@ -170,13 +254,11 @@ export default function HomeContentForm() {
     setSaving(true);
     setError(null);
     try {
-      const payload: HomeContent = {
-        heroBg,
-        ctaBg,
-        programmes,
-      };
+      // Note: cast needed until HomeContent in api-types.ts is updated to use heroBgs
+      const payload = { heroBgs, ctaBg, programmes } as unknown as HomeContent;
       const saved = await putHomeContent(payload);
-      setHeroBg(saved.heroBg);
+      const raw = saved as any;
+      setHeroBgs(Array.isArray(raw.heroBgs) ? raw.heroBgs : []);
       setCtaBg(saved.ctaBg);
       setProgrammes(saved.programmes.slice());
     } catch (e: any) {
@@ -195,15 +277,14 @@ export default function HomeContentForm() {
   }
 
   return (
-    // center content and cap width so it never feels blown out on wide screens
     <div className="mx-auto max-w-5xl space-y-8">
-      {/* page title */}
+      {/* Page title */}
       <div className="flex items-center justify-between">
         <h1 className="section-title text-[var(--text-section)] md:text-[var(--text-page)] font-semibold">
           Home content
         </h1>
         <div className="text-sm text-[var(--color-ink-muted)]">
-          Update hero, CTA band, and profile sections
+          Update hero slideshow, CTA band, and profile sections
         </div>
       </div>
 
@@ -214,40 +295,75 @@ export default function HomeContentForm() {
         </div>
       )}
 
-      {/* put hero and cta in a responsive grid with each card width capped */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="glass-panel">
-          <CardHeader>
-            <CardTitle>Hero background</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ImageField
-              label="Hero image"
-              value={heroBg}
-              onChange={setHeroBg}
-              uploadName="hero"
-              category="home"
-              helper="Use a wide image with strong contrast for overlay text."
-            />
-          </CardContent>
-        </Card>
+      {/* Hero slideshow */}
+      <Card className="glass-panel">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Hero slideshow</CardTitle>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[var(--color-ink-muted)]">
+                {heroBgs.length} / {HERO_MAX} slides
+              </span>
+              <Button
+                type="button"
+                className="btn btn-outline-gold inline-flex items-center gap-2"
+                onClick={addHeroSlide}
+                disabled={heroBgs.length >= HERO_MAX}
+              >
+                <IconPhotoPlus className="h-4 w-4" />
+                Add slide
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--color-ink-muted)] mt-1">
+            Up to {HERO_MAX} images. The first slide is shown on page load — reorder using the arrows.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {heroBgs.length === 0 ? (
+            <div className="rounded-md border border-dashed p-8 text-center space-y-3">
+              <p className="text-sm text-[var(--color-ink-muted)]">No slides added yet.</p>
+              <Button
+                type="button"
+                className="btn btn-outline-gold inline-flex items-center gap-2"
+                onClick={addHeroSlide}
+              >
+                <IconPhotoPlus className="h-4 w-4" />
+                Add first slide
+              </Button>
+            </div>
+          ) : (
+            heroBgs.map((img, idx) => (
+              <HeroSlide
+                key={idx}
+                index={idx}
+                total={heroBgs.length}
+                value={img}
+                onChange={(v) => updateHeroSlide(idx, v)}
+                onRemove={() => removeHeroSlide(idx)}
+                onMove={(dir) => moveHeroSlide(idx, dir)}
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
 
-        <Card className="glass-panel">
-          <CardHeader>
-            <CardTitle>CTA band background</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ImageField
-              label="CTA image"
-              value={ctaBg}
-              onChange={setCtaBg}
-              uploadName="cta"
-              category="home"
-              helper="Shown behind the call to action band."
-            />
-          </CardContent>
-        </Card>
-      </div>
+      {/* CTA band */}
+      <Card className="glass-panel">
+        <CardHeader>
+          <CardTitle>CTA band background</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ImageField
+            label="CTA image"
+            value={ctaBg}
+            onChange={setCtaBg}
+            uploadName="cta"
+            category="home"
+            helper="Shown behind the call-to-action band."
+          />
+        </CardContent>
+      </Card>
 
       {/* Profile sections */}
       <Card className="glass-panel">
@@ -259,7 +375,7 @@ export default function HomeContentForm() {
             {programmes.map((p, idx) => {
               const complete = isItemComplete(p);
               return (
-                <div key={p.id || idx || uid()} className="rounded-lg border p-4 space-y-4 bg-white/60">
+                <div key={p.id || idx} className="rounded-lg border p-4 space-y-4 bg-white/60">
                   <div className="flex items-center justify-between">
                     <div className="text-sm">
                       <span className="badge badge-gold">Section {idx + 1}</span>{" "}
@@ -314,7 +430,7 @@ export default function HomeContentForm() {
         </CardContent>
       </Card>
 
-      {/* sticky save bar constrained to content width */}
+      {/* Sticky save bar */}
       <div className="sticky bottom-0 z-10 mx-auto max-w-5xl">
         <div className="glass-panel rounded-[var(--radius-panel)] border p-3 flex items-center justify-between">
           <div className="text-sm text-[var(--color-ink-muted)]">
