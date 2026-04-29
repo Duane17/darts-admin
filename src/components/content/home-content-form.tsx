@@ -254,8 +254,7 @@ export default function HomeContentForm() {
     setSaving(true);
     setError(null);
     try {
-      // Note: cast needed until HomeContent in api-types.ts is updated to use heroBgs
-      const payload = { heroBgs, ctaBg, programmes } as unknown as HomeContent;
+      const payload: HomeContent = { heroBgs, ctaBg, programmes };
       const saved = await putHomeContent(payload);
       const raw = saved as any;
       setHeroBgs(Array.isArray(raw.heroBgs) ? raw.heroBgs : []);

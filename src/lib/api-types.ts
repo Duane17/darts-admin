@@ -406,7 +406,8 @@ export type ProgrammeItem = {
 };
 
 export type HomeContent = {
-  heroBg: string;
+  /** Multi-image hero slideshow (1–4 images). Legacy `heroBg` has been removed. */
+  heroBgs: string[];
   ctaBg: string;
   programmes: ProgrammeItem[];
 };
