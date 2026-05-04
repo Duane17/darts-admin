@@ -6,14 +6,16 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import ImageResize from "tiptap-extension-resize-image";
 import Underline from "@tiptap/extension-underline";
+import Link from "@tiptap/extension-link";
 import { uploadImage } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
   List, ListOrdered, Heading1, Heading2, Quote, Code, 
-  ImageIcon, Undo, Redo 
+  ImageIcon, Undo, Redo, Link as LinkIcon, Unlink
 } from "lucide-react";
-import React, { useState, useImperativeHandle, forwardRef, useRef } from "react";
+import React, { useState, useCallback, useImperativeHandle, forwardRef, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
@@ -28,8 +30,6 @@ export interface RichTextEditorRef {
 }
 
 // Scoped styles for the ProseMirror editing surface.
-// These ensure every formatting tool is visually reflected in the editor
-// without relying solely on @tailwindcss/typography prose classes.
 const EDITOR_STYLES = `
   .ProseMirror { outline: none; }
 
@@ -54,6 +54,22 @@ const EDITOR_STYLES = `
   .ProseMirror em      { font-style: italic; }
   .ProseMirror u       { text-decoration: underline; }
   .ProseMirror s       { text-decoration: line-through; }
+
+  /* Links */
+  .ProseMirror a {
+    color: #2563EB;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .ProseMirror a:hover {
+    color: #1D4ED8;
+  }
+  .dark .ProseMirror a {
+    color: #60A5FA;
+  }
+  .dark .ProseMirror a:hover {
+    color: #93C5FD;
+  }
 
   /* Paragraphs */
   .ProseMirror p              { margin: 0.4rem 0; }
@@ -137,17 +153,29 @@ const EDITOR_STYLES = `
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   ({ value, onChange }, ref) => {
-    // Map to keep track of blobUrl -> File object
     const pendingFiles = useRef<Map<string, File>>(new Map());
+
+    // Controls the inline link input popover in the toolbar
+    const [linkInputOpen, setLinkInputOpen] = useState(false);
+    const [linkUrl, setLinkUrl] = useState("");
+    const linkInputRef = useRef<HTMLInputElement>(null);
 
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
-          heading: {
-            levels: [1, 2],
-          },
+          heading: { levels: [1, 2] },
         }),
         Underline,
+        // inclusive: false ensures the mark does NOT extend when typing
+        // immediately after the end of a link.
+        Link.extend({ inclusive: false }).configure({
+          openOnClick: false,
+          autolink: true,
+          HTMLAttributes: {
+            rel: "noopener noreferrer",
+            target: "_blank",
+          },
+        }),
         Image.configure({ allowBase64: false }),
         ImageResize,
       ],
@@ -157,24 +185,35 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         attributes: {
           class: "prose prose-sm dark:prose-invert max-w-none min-h-[300px] border rounded-md p-4 focus:outline-none focus:ring-1 focus:ring-ring bg-background",
         },
+        handleKeyDown(view, event) {
+          // Spacebar exits a link mark — inserts a plain space with the mark stripped
+          if (event.key === " ") {
+            const { state, dispatch } = view;
+            const marks = state.storedMarks ?? state.selection.$from.marks();
+            const linkMark = marks.find((m) => m.type.name === "link");
+            if (linkMark) {
+              dispatch(state.tr.removeStoredMark(linkMark.type).insertText(" "));
+              return true;
+            }
+          }
+          return false;
+        },
       },
       onUpdate: ({ editor }) => {
         onChange(editor.getHTML());
       },
     });
 
-    // Expose this method to the parent component
+    // Expose getFinalHtml to parent
     useImperativeHandle(ref, () => ({
       async getFinalHtml() {
         if (!editor) return "";
         let html = editor.getHTML();
 
-        // 1. Find all images in the content
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
         const images = doc.querySelectorAll("img");
-        
-        // 2. Upload only the ones that are still blob URLs
+
         for (const img of Array.from(images)) {
           const src = img.getAttribute("src");
           if (src && src.startsWith("blob:") && pendingFiles.current.has(src)) {
@@ -183,8 +222,6 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
               const path = await uploadImage({ file, category: "announcements" });
               const fullImageUrl = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
               img.setAttribute("src", fullImageUrl);
-              
-              // Clean up memory
               URL.revokeObjectURL(src);
               pendingFiles.current.delete(src);
             } catch (err) {
@@ -208,6 +245,40 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       const file = e.target.files?.[0];
       if (file) insertLocalPreview(file);
       e.target.value = "";
+    };
+
+    // Open the link input, pre-filling any existing href on the selection
+    const openLinkInput = useCallback(() => {
+      if (!editor) return;
+      const existing = editor.getAttributes("link").href ?? "";
+      setLinkUrl(existing);
+      setLinkInputOpen(true);
+      // Focus the input on the next paint
+      setTimeout(() => linkInputRef.current?.focus(), 0);
+    }, [editor]);
+
+    // Apply or update the link
+    const applyLink = useCallback(() => {
+      if (!editor) return;
+      const url = linkUrl.trim();
+      if (!url) return;
+      // Prepend https:// if the user didn't include a protocol
+      const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+      setLinkInputOpen(false);
+      setLinkUrl("");
+    }, [editor, linkUrl]);
+
+    const removeLink = useCallback(() => {
+      if (!editor) return;
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      setLinkInputOpen(false);
+      setLinkUrl("");
+    }, [editor]);
+
+    const handleLinkKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") { e.preventDefault(); applyLink(); }
+      if (e.key === "Escape") { setLinkInputOpen(false); setLinkUrl(""); }
     };
 
     if (!editor) return null;
@@ -238,9 +309,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       </Button>
     );
 
+    const isLinkActive = editor.isActive("link");
+
     return (
       <div className="flex flex-col gap-2">
-        {/* Inject scoped ProseMirror styles once per editor instance */}
         <style>{EDITOR_STYLES}</style>
 
         <div className="flex flex-wrap items-center gap-1 p-1 border rounded-md bg-muted/50 sticky top-0 z-10">
@@ -289,6 +361,50 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive("codeBlock")} title="Code Block">
             <Code className="h-4 w-4" />
           </ToolbarButton>
+
+          <div className="w-[1px] h-4 bg-border mx-1" />
+
+          {/* ── Link controls ── */}
+          <ToolbarButton onClick={openLinkInput} isActive={isLinkActive} title="Insert / edit link">
+            <LinkIcon className="h-4 w-4" />
+          </ToolbarButton>
+          {isLinkActive && (
+            <ToolbarButton onClick={removeLink} title="Remove link">
+              <Unlink className="h-4 w-4" />
+            </ToolbarButton>
+          )}
+
+          {/* Inline URL input — shown when the link button is clicked */}
+          {linkInputOpen && (
+            <div className="flex items-center gap-1 ml-1">
+              <Input
+                ref={linkInputRef}
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={handleLinkKeyDown}
+                placeholder="https://example.com"
+                className="h-7 w-48 text-xs px-2"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={applyLink}
+                disabled={!linkUrl.trim()}
+              >
+                Apply
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => { setLinkInputOpen(false); setLinkUrl(""); }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
 
           <div className="w-[1px] h-4 bg-border mx-1" />
 
