@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Shared hosting caps process count; default (one worker per CPU) fails with spawn EAGAIN.
+  experimental: { cpus: 1, workerThreads: false },
   eslint: { ignoreDuringBuilds: true },
   output: "export",
   trailingSlash: true,
@@ -21,7 +23,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "api.dartsmw.org",
+        hostname: "api.dartsmalawi.org",
         pathname: "/uploads/**",
       },
     ],

@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
       // you can add production domains here later, e.g.:
       // {
       //   protocol: "https",
-      //   hostname: "api.dartsmw.org",
+      //   hostname: "api.dartsmalawi.org",
       //   pathname: "/uploads/**",
       // },
     ],
