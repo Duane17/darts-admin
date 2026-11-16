@@ -125,38 +125,6 @@ export default function AuthForm({ initialMode = "login" as Mode }) {
             {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
           </Button>
         </form>
-
-        <div className="mt-4 text-center text-sm">
-          {mode === "login" ? (
-            <>
-              Don&apos;t have an account?{" "}
-              <button
-                type="button"
-                className="text-[var(--color-green)] underline-offset-2 hover:underline"
-                onClick={() => {
-                  setMode("register");
-                  setErr(null);
-                }}
-              >
-                Create one
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button
-                type="button"
-                className="text-[var(--color-green)] underline-offset-2 hover:underline"
-                onClick={() => {
-                  setMode("login");
-                  setErr(null);
-                }}
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );
